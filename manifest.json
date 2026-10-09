@@ -1,1 +1,12 @@
-
+{
+  "name": "Checklist semanal",
+  "short_name": "Checklist",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF3EF",
+  "theme_color": "#0B7A3E",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
