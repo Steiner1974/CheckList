@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B7A3E">
+<title>Checklist semanal</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#EEF3EF;--card:#FFFFFF;--ink:#14261C;--muted:#5E7065;--green:#0B7A3E;--green-soft:#D7EBDD;--line:#CFDCD3;--done:#93A39A;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1A14;--card:#16241C;--ink:#E4EEE7;--muted:#9AB0A2;--green:#3DBE77;--green-soft:#1F3A2A;--line:#2A3D31;--done:#5F7568}}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:680px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:clamp(1.5rem,5vw,2.2rem);font-weight:800;line-height:1.1;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 18px;font-size:.95rem}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:22px}
+.bar span{display:block;height:100%;background:var(--green);width:0;transition:width .3s}
+ul{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px}
+li{display:flex;align-items:center;gap:10px;padding:14px;border-top:1px solid var(--line)}
+li:first-child{border-top:none}
+.row{flex:1;display:flex;align-items:center;gap:12px;min-width:0}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--green);flex-shrink:0;cursor:pointer}
+.txt{font-size:1.02rem;line-height:1.35;word-break:break-word;cursor:text;border-radius:4px;padding:2px 4px}
+.txt:focus{outline:2px solid var(--green)}
+li.done .txt{text-decoration:line-through;text-decoration-thickness:2px;color:var(--done)}
+.tag{font:inherit;font-size:.78rem;font-weight:700;color:var(--green);background:var(--green-soft);padding:4px 8px;border-radius:99px;border:1px solid transparent}
+.tag.one{color:var(--muted);background:var(--card);border-color:var(--line)}
+.due{font:inherit;font-size:.85rem;border:1px solid var(--line);border-radius:8px;padding:4px 6px;background:var(--card);color:var(--muted);max-width:150px}
+.due.late{color:#C0392B;border-color:#C0392B;font-weight:700}
+li.done .due{opacity:.5}
+.del{border:none;background:none;color:var(--muted);font-size:1.3rem;cursor:pointer;padding:4px 6px}
+@media (max-width:520px){li{flex-wrap:wrap}li .row{flex-basis:100%}}
+form{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+form input[type=text]{flex:1 1 220px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
+form select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+button.main{background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px 18px;font:inherit;font-weight:700}
+.reset{margin-top:26px;background:none;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 14px;font:inherit}
+.empty{padding:18px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p class="sub" id="count"></p>
+  <div class="bar"><span id="prog"></span></div>
+  <ul id="list"></ul>
+  <form id="add">
+    <input type="text" id="newTask" placeholder="Añadir tarea">
+    <input type="date" id="newDue" class="due" title="Fecha fin">
+    <select id="newFreq"></select>
+    <button class="main" type="submit">Añadir</button>
+  </form>
+  <button class="reset" id="nextWeek">Empezar semana siguiente</button>
+</main>
+<script>
+const KEY='checklist-semanal-v1';
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const FREQ={none:'Puntual',daily:'🔁 Diaria',weekly:'🔁 Semanal',biweekly:'🔁 Quincenal',monthly:'🔁 Mensual'};
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const today=()=>{const n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate())};
+function mondayOf(d){const x=new Date(d);x.setDate(x.getDate()-(x.getDay()+6)%7);return x}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const ANCHOR=parse('2026-10-12');
+function periodStart(f,d){
+  if(f==='daily')return d;
+  if(f==='weekly')return mondayOf(d);
+  if(f==='biweekly'){const w=Math.floor(Math.round((mondayOf(d)-ANCHOR)/864e5)/7);const s=new Date(ANCHOR);s.setDate(s.getDate()+Math.floor(w/2)*14);return s}
+  if(f==='monthly')return new Date(d.getFullYear(),d.getMonth(),1);
+}
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!state||!state.tasks)state={weekStart:'2026-10-12',tasks:[
+  {id:uid(),text:'Convocar reunión gestores',freq:'weekly',done:false},
+  {id:uid(),text:'Revisar agenda semanal gestores',freq:'weekly',done:false}]};
+function normalize(){const d=today();state.tasks.forEach(t=>{if(t.freq!=='none'&&t.done&&(!t.doneAt||parse(t.doneAt)<periodStart(t.freq,d)))t.done=false})}
+function newWeek(w,manual){state.weekStart=w;state.tasks=state.tasks.filter(t=>t.freq!=='none'||!t.done);if(manual)state.tasks.forEach(t=>{if(t.freq==='daily'||t.freq==='weekly')t.done=false})}
+const cur=mondayOf(today());if(cur>parse(state.weekStart))newWeek(iso(cur),false);
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+function fillFreq(s,v){for(const k in FREQ){const o=document.createElement('option');o.value=k;o.textContent=FREQ[k];s.append(o)}s.value=v}
+function render(){
+  normalize();
+  const s=parse(state.weekStart),e=new Date(s);e.setDate(e.getDate()+6);
+  document.getElementById('title').textContent='📅 '+(s.getMonth()===e.getMonth()
+    ?`Semana del ${s.getDate()} al ${e.getDate()} de ${MESES[s.getMonth()]} de ${e.getFullYear()}`
+    :`Semana del ${s.getDate()} de ${MESES[s.getMonth()]} al ${e.getDate()} de ${MESES[e.getMonth()]} de ${e.getFullYear()}`);
+  const done=state.tasks.filter(t=>t.done).length,tot=state.tasks.length;
+  document.getElementById('count').textContent=`${done} de ${tot} realizadas · ${tot-done} pendientes`;
+  document.getElementById('prog').style.width=tot?(done/tot*100)+'%':'0';
+  const ul=document.getElementById('list');ul.innerHTML='';
+  if(!tot){ul.innerHTML='<li class="empty">Sin tareas. Añade la primera abajo.</li>';return}
+  state.tasks.forEach(t=>{
+    const li=document.createElement('li');if(t.done)li.className='done';
+    const row=document.createElement('div');row.className='row';
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=t.done;
+    cb.onchange=()=>{t.done=cb.checked;t.doneAt=cb.checked?iso(today()):'';save();render()};
+    const sp=document.createElement('span');sp.className='txt';sp.textContent=t.text;sp.contentEditable='true';sp.spellcheck=false;
+    sp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();sp.blur()}if(ev.key==='Escape'){sp.textContent=t.text;sp.blur()}};
+    sp.onblur=()=>{const v=sp.textContent.trim();if(v&&v!==t.text){t.text=v;save();render()}else sp.textContent=t.text};
+    row.append(cb,sp);li.append(row);
+    const fs=document.createElement('select');fillFreq(fs,t.freq);fs.className='tag'+(t.freq==='none'?' one':'');
+    fs.onchange=()=>{t.freq=fs.value;if(t.done)t.doneAt=iso(today());save();render()};li.append(fs);
+    const du=document.createElement('input');du.type='date';du.className='due';du.value=t.due||'';
+    if(t.due&&!t.done&&parse(t.due)<today())du.classList.add('late');
+    du.onchange=()=>{t.due=du.value;save();render()};li.append(du);
+    const d=document.createElement('button');d.className='del';d.textContent='×';
+    d.onclick=()=>{if(confirm('¿Eliminar "'+t.text+'"?')){state.tasks=state.tasks.filter(x=>x.id!==t.id);save();render()}};
+    li.append(d);ul.append(li);
+  });
+}
+const nf=document.getElementById('newFreq');fillFreq(nf,'none');
+document.getElementById('add').onsubmit=ev=>{
+  ev.preventDefault();const i=document.getElementById('newTask'),dd=document.getElementById('newDue');
+  const v=i.value.trim();if(!v)return;
+  state.tasks.push({id:uid(),text:v,freq:nf.value,done:false,due:dd.value});
+  i.value='';dd.value='';nf.value='none';save();render();
+};
+document.getElementById('nextWeek').onclick=()=>{
+  if(!confirm('Se quitarán las puntuales completadas; las pendientes pasan a la semana siguiente. ¿Continuar?'))return;
+  const s=parse(state.weekStart);s.setDate(s.getDate()+7);newWeek(iso(s),true);save();render();
+};
+save();render();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
